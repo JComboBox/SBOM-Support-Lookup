@@ -8,16 +8,39 @@ A single-page, dependency-free web app that:
    - A package that got a usable response is marked with a green **✓** and shows its EOL/support dates next to it.
    - A package whose lookup failed is marked with a red **✗**. Clicking the ✗ opens a dialog with the actual error response (URL, HTTP status, body).
 
-It's plain HTML/CSS/JavaScript (ES modules, no build step, no framework) so it's easy to clone, open, and share.
+It's plain HTML/CSS/JavaScript, no framework, no dependencies to install, so it's easy to clone, open, and
+share. There are two ways to run it, depending on whether you want to develop it or just hand it to someone.
 
-## Running the application
+## Standalone HTML (send this to someone - no server needed)
+
+For sharing with someone who just wants to use the app, generate a single self-contained HTML file:
+
+```bash
+npm run build
+```
+
+This writes **`dist/sbom-support-lookup.html`** - one file with the CSS and JS inlined into it. Send that file
+to anyone and they can double-click it (or open it via `File > Open` in their browser) to run the app straight
+from disk, with no server, no `npm install`, and no internet access required except to reach the
+endoflife.date API when they click "Load End of Life Dates".
+
+`dist/sbom-support-lookup.html` is checked into the repo and kept up to date, so you can also just download
+that file directly from the repo without running anything.
+
+The multi-file version under `js/`/`css/` remains the source of truth for development (see below) - `npm run
+build` (`scripts/build-standalone.js`) inlines those files into the standalone copy. Regenerate and commit it
+whenever `index.html`, `css/styles.css`, or any `js/*.js` file changes.
+
+## Developing (local server)
 
 ```bash
 npm start
 ```
 
-This runs `npx serve` and opens the app at `http://localhost:5173`. A local static server is required because
-the page uses ES modules, which browsers block when loaded directly from `file://`.
+This runs `npx serve` and opens the app at `http://localhost:5173`. A local static server is needed for
+day-to-day development because `index.html` loads `js/app.js` as an ES module, and browsers block ES module
+`import`s when a page is opened directly from `file://`. (The standalone build above sidesteps this entirely by
+inlining everything into one non-module `<script>`.)
 
 No `npm install` step or `node_modules` is needed for the app itself - `npm start` is just a convenience wrapper
 around `npx serve`. Any static file server works, e.g.:
@@ -46,8 +69,9 @@ npm test
 
 This runs `node --test`, which auto-discovers every `*.test.js` file under [`tests/`](tests) using Node's
 built-in test runner (Node 18+, no dependencies to install). It covers the pure parsing/matching logic
-end-to-end, including the success (✓) and failure (✗) branches of the endoflife.date lookup, by stubbing the
-global `fetch`.
+end-to-end, including the success (✓) and failure (✗) branches of the endoflife.date lookup (by stubbing the
+global `fetch`), and also runs `scripts/build-standalone.js` and checks the generated
+`dist/sbom-support-lookup.html` has no leftover ES module syntax.
 
 ## How it works / function reference
 
@@ -150,14 +174,16 @@ The only file that touches the DOM; wires the two files above to the page.
 ## Project layout
 
 ```
-index.html             entry point
-css/styles.css          styling
-js/purl.js              purl parser
-js/sbom-parser.js       CycloneDX / SPDX -> flat component list
-js/eol-client.js        endoflife.date API client + matching logic
-js/app.js               UI wiring
-samples/                 example CycloneDX / SPDX SBOMs
-tests/                   node:test regression tests for the pure logic modules
+index.html                        entry point (multi-file, dev version)
+css/styles.css                     styling
+js/purl.js                         purl parser
+js/sbom-parser.js                  CycloneDX / SPDX -> flat component list
+js/eol-client.js                   endoflife.date API client + matching logic
+js/app.js                          UI wiring
+scripts/build-standalone.js        inlines the above into dist/sbom-support-lookup.html
+dist/sbom-support-lookup.html      generated, single-file, no-server-required app
+samples/                            example CycloneDX / SPDX SBOMs
+tests/                              node:test regression tests for the pure logic modules
 ```
 
 ## Working with Claude Code
