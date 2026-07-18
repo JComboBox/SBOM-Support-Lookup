@@ -2,6 +2,7 @@ import { extractComponents } from './sbom-parser.js';
 import { parsePurl } from './purl.js';
 import { getAllProducts, lookupComponentEol } from './eol-client.js';
 
+const uploadBtn = document.getElementById('upload-btn');
 const fileInput = document.getElementById('sbom-file');
 const dropZone = document.getElementById('drop-zone');
 const lookupBtn = document.getElementById('lookup-btn');
@@ -12,20 +13,16 @@ const tableBody = document.getElementById('components-body');
 const tableSection = document.getElementById('table-section');
 const productDatalist = document.getElementById('product-list');
 
+const errorModal = document.getElementById('error-modal');
+const errorModalBody = document.getElementById('error-modal-body');
+const errorModalClose = document.getElementById('error-modal-close');
+
 /** @type {Array<{name: string, version: string, purl: string, type: string, group: string, eol: any}>} */
 let rows = [];
 
 const LOOKUP_CONCURRENCY = 6;
-const STATUS_LABELS = {
-  eol: 'End of life',
-  'eol-scheduled': 'Sunset scheduled',
-  supported: 'Supported',
-  'not-tracked': 'Not tracked',
-  'no-version-match': 'Version unmatched',
-  unknown: 'Unknown',
-  pending: 'Pending'
-};
 
+uploadBtn.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', (e) => {
   const file = e.target.files?.[0];
   if (file) handleFile(file);
@@ -46,6 +43,15 @@ dropZone.addEventListener('drop', (e) => {
 lookupBtn.addEventListener('click', () => runLookups());
 filterInput.addEventListener('input', () => renderTable());
 
+errorModalClose.addEventListener('click', closeErrorModal);
+errorModal.addEventListener('click', (e) => {
+  if (e.target === errorModal) closeErrorModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !errorModal.hidden) closeErrorModal();
+});
+
+/** Reads the uploaded SBOM file and populates the package table. */
 async function handleFile(file) {
   setStatus(`Reading ${file.name}...`);
   try {
@@ -53,13 +59,18 @@ async function handleFile(file) {
     const json = JSON.parse(text);
     const components = extractComponents(json);
 
-    rows = components.map((c) => ({
+    rows = components.map((c, index) => ({
       ...c,
+      id: index,
       purlParsed: c.purl ? parsePurl(c.purl) : null,
-      eol: { status: 'pending', label: STATUS_LABELS.pending }
+      eol: null,
+      lookupSeq: 0
     }));
 
-    setStatus(`Loaded ${rows.length} package${rows.length === 1 ? '' : 's'} from ${file.name}. In memory only - nothing is uploaded anywhere.`);
+    setStatus(
+      `Loaded ${rows.length} package${rows.length === 1 ? '' : 's'} from ${file.name}. ` +
+        'In memory only - nothing is uploaded anywhere.'
+    );
     tableSection.hidden = rows.length === 0;
     lookupBtn.disabled = rows.length === 0;
     renderTable();
@@ -71,6 +82,7 @@ async function handleFile(file) {
   }
 }
 
+/** Warms the product-slug datalist used by the per-row "override" input. */
 async function preloadProductList() {
   try {
     const products = await getAllProducts();
@@ -80,49 +92,62 @@ async function preloadProductList() {
   }
 }
 
+/** Runs an EOL lookup for every row, a few at a time, updating the UI as results arrive. */
 async function runLookups() {
   lookupBtn.disabled = true;
-  setStatus('Looking up end-of-life data on endoflife.date...');
+  setStatus('Loading end-of-life dates from endoflife.date...');
 
   let cursor = 0;
   const worker = async () => {
     while (cursor < rows.length) {
       const row = rows[cursor++];
-      row.eol = { status: 'pending', label: 'Looking up...' };
-      renderRow(row);
-      try {
-        row.eol = await lookupComponentEol(
-          { name: row.name, version: row.version, type: row.purlParsed?.type || row.type },
-          row.overrideSlug
-        );
-      } catch (err) {
-        row.eol = { status: 'error', label: `Lookup failed: ${err.message}` };
-      }
-      renderRow(row);
-      updateSummary();
+      await lookupRow(row);
     }
   };
 
   const workers = Array.from({ length: Math.min(LOOKUP_CONCURRENCY, rows.length) }, worker);
   await Promise.all(workers);
 
-  setStatus(`Done. Looked up ${rows.length} package${rows.length === 1 ? '' : 's'} against endoflife.date.`);
+  const failed = rows.filter((r) => r.eol && !r.eol.ok).length;
+  setStatus(
+    `Done. Checked ${rows.length} package${rows.length === 1 ? '' : 's'} against endoflife.date` +
+      (failed ? ` - ${failed} could not be resolved (click the red X for details).` : '.')
+  );
   lookupBtn.disabled = false;
 }
 
-async function relookupRow(row, slug) {
-  row.overrideSlug = slug || undefined;
-  row.eol = { status: 'pending', label: 'Looking up...' };
-  renderRow(row);
+/**
+ * Looks up a single row (used for both the batch run and per-row product overrides).
+ * Guarded with a per-row sequence number so that if a row is re-triggered (e.g. the
+ * user edits the product override again) before the previous lookup finishes, the
+ * stale result is discarded instead of clobbering the newer one.
+ */
+async function lookupRow(row) {
+  const seq = ++row.lookupSeq;
+  row.eol = { status: 'pending' };
+  updateResultCell(row);
+
+  let result;
   try {
-    row.eol = await lookupComponentEol(
+    result = await lookupComponentEol(
       { name: row.name, version: row.version, type: row.purlParsed?.type || row.type },
       row.overrideSlug
     );
   } catch (err) {
-    row.eol = { status: 'error', label: `Lookup failed: ${err.message}` };
+    // lookupComponentEol resolves rather than rejects; this only catches
+    // truly unexpected programmer errors so the UI never gets stuck.
+    result = {
+      ok: false,
+      slug: null,
+      status: 'error',
+      label: 'Unexpected error',
+      error: { message: err.message, url: null, httpStatus: null, body: null }
+    };
   }
-  renderRow(row);
+
+  if (seq !== row.lookupSeq) return; // superseded by a newer lookup for this row
+  row.eol = result;
+  updateResultCell(row);
   updateSummary();
 }
 
@@ -144,58 +169,125 @@ function rowMatchesFilter(row, filter) {
   );
 }
 
-function renderRow(row) {
-  const existing = tableBody.querySelector(`tr[data-purl="${cssEscape(row.purl)}"][data-name="${cssEscape(row.name)}"]`);
-  const replacement = buildRowElement(row);
-  if (existing) existing.replaceWith(replacement);
+/** Updates only the "End-of-life result" cell for a row, leaving the rest of the row untouched. */
+function updateResultCell(row) {
+  const tr = findRowElement(row);
+  if (!tr) return; // row is currently filtered out of view
+
+  const cell = tr.children[4];
+  cell.innerHTML = buildResultCellHtml(row);
+
+  const errorMark = cell.querySelector('.mark-error');
+  if (errorMark) errorMark.addEventListener('click', () => openErrorModal(row));
 }
 
-function cssEscape(value) {
-  return String(value || '').replace(/["\\]/g, '\\$&');
+function findRowElement(row) {
+  return tableBody.querySelector(`tr[data-row-id="${row.id}"]`);
 }
 
 function buildRowElement(row) {
   const tr = document.createElement('tr');
-  tr.dataset.purl = row.purl;
-  tr.dataset.name = row.name;
-
-  const eol = row.eol || { status: 'pending', label: STATUS_LABELS.pending };
-  const badgeClass = `badge badge-${eol.status}`;
+  tr.dataset.rowId = String(row.id);
 
   tr.innerHTML = `
     <td>${escapeHtml(row.name)}</td>
     <td>${escapeHtml(row.version || '-')}</td>
     <td class="purl-cell"><code>${escapeHtml(row.purl || '-')}</code></td>
     <td>${escapeHtml(row.purlParsed?.type || row.type || '-')}</td>
+    <td>${buildResultCellHtml(row)}</td>
     <td>
-      <span class="${badgeClass}">${escapeHtml(eol.label || STATUS_LABELS[eol.status] || eol.status)}</span>
-      ${eol.slug ? `<a class="eol-link" href="https://endoflife.date/${encodeURIComponent(eol.slug)}" target="_blank" rel="noopener">${escapeHtml(eol.slug)}</a>` : ''}
-    </td>
-    <td>
-      <input type="text" class="override-input" list="product-list" placeholder="override product..." value="${escapeHtml(row.overrideSlug || eol.slug || '')}" />
+      <input type="text" class="override-input" list="product-list" placeholder="override product..." value="${escapeHtml(row.overrideSlug || row.eol?.slug || '')}" />
     </td>
   `;
 
   const overrideInput = tr.querySelector('.override-input');
   overrideInput.addEventListener('change', () => {
     const value = overrideInput.value.trim();
-    relookupRow(row, value || undefined);
+    row.overrideSlug = value || undefined;
+    lookupRow(row);
   });
+
+  const errorMark = tr.querySelector('.mark-error');
+  if (errorMark) {
+    errorMark.addEventListener('click', () => openErrorModal(row));
+  }
 
   return tr;
 }
 
+/** Builds the "End-of-life result" cell: a checkmark + dates, or a clickable red X. */
+function buildResultCellHtml(row) {
+  const eol = row.eol;
+
+  if (!eol || eol.status === 'pending') {
+    return `<span class="result-cell"><span class="mark mark-pending">&hellip;</span> <span class="result-text">Not checked yet</span></span>`;
+  }
+
+  if (eol.ok) {
+    const productLink = eol.slug
+      ? `<a class="eol-link" href="https://endoflife.date/${encodeURIComponent(eol.slug)}" target="_blank" rel="noopener">${escapeHtml(eol.slug)}</a>`
+      : '';
+    return `
+      <span class="result-cell">
+        <span class="mark mark-ok" title="endoflife.date returned data for this package">&#10003;</span>
+        <span class="result-text">${escapeHtml(eol.label)}</span>
+        ${productLink}
+      </span>
+    `;
+  }
+
+  return `
+    <span class="result-cell">
+      <button type="button" class="mark mark-error" title="Click to see the error details">&#10007;</button>
+      <span class="result-text result-text-error">${escapeHtml(eol.label || 'Lookup failed')}</span>
+    </span>
+  `;
+}
+
+function openErrorModal(row) {
+  const eol = row.eol;
+  const err = eol?.error;
+
+  errorModalBody.innerHTML = `
+    <dl>
+      <dt>Package</dt><dd>${escapeHtml(row.name)} ${escapeHtml(row.version || '')}</dd>
+      <dt>PURL</dt><dd><code>${escapeHtml(row.purl || '-')}</code></dd>
+      <dt>Matched product</dt><dd>${escapeHtml(eol?.slug || '(none)')}</dd>
+      <dt>Request URL</dt><dd>${err?.url ? `<code>${escapeHtml(err.url)}</code>` : '-'}</dd>
+      <dt>HTTP status</dt><dd>${err?.httpStatus ?? '-'}</dd>
+    </dl>
+    <p>${escapeHtml(err?.message || 'Unknown error')}</p>
+    ${err?.body ? `<pre class="modal-raw">${escapeHtml(truncate(err.body, 2000))}</pre>` : ''}
+  `;
+  errorModal.hidden = false;
+  errorModalClose.focus();
+}
+
+function closeErrorModal() {
+  errorModal.hidden = true;
+}
+
+function truncate(str, maxLength) {
+  return str.length > maxLength ? `${str.slice(0, maxLength)}...` : str;
+}
+
 function updateSummary() {
-  const counts = { eol: 0, 'eol-scheduled': 0, supported: 0, 'not-tracked': 0, 'no-version-match': 0, unknown: 0, pending: 0, error: 0 };
+  const counts = { ok: 0, eol: 0, 'eol-scheduled': 0, supported: 0, failed: 0, pending: 0 };
   for (const row of rows) {
-    const status = row.eol?.status || 'pending';
-    counts[status] = (counts[status] || 0) + 1;
+    const eol = row.eol;
+    if (!eol || eol.status === 'pending') {
+      counts.pending += 1;
+    } else if (eol.ok) {
+      counts.ok += 1;
+      counts[eol.status] = (counts[eol.status] || 0) + 1;
+    } else {
+      counts.failed += 1;
+    }
   }
   summaryEl.innerHTML = `
-    <span class="summary-item badge-eol">${counts.eol} end of life</span>
-    <span class="summary-item badge-eol-scheduled">${counts['eol-scheduled']} sunset scheduled</span>
-    <span class="summary-item badge-supported">${counts.supported} supported</span>
-    <span class="summary-item badge-not-tracked">${counts['not-tracked'] + counts['no-version-match'] + counts.unknown} not tracked / unmatched</span>
+    <span class="summary-item summary-ok">&#10003; ${counts.ok} resolved (${counts.supported} supported, ${counts['eol-scheduled']} sunset scheduled, ${counts.eol} end of life)</span>
+    <span class="summary-item summary-error">&#10007; ${counts.failed} failed</span>
+    <span class="summary-item">${counts.pending} pending</span>
   `;
 }
 

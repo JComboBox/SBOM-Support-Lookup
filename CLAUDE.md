@@ -18,8 +18,13 @@ HTML page (served statically) and it works.
 - `js/eol-client.js` - talks to `https://endoflife.date/api/*` via `fetch`. Exports both the network-calling
   functions (`getAllProducts`, `getCycles`, `lookupComponentEol`) and pure helpers (`normalize`,
   `versionMajorMinor`, `matchCycle`, `interpretEol`) that are unit tested without any network access.
-- `js/app.js` - the only file that touches the DOM. Wires file upload/drag-drop, renders the table, runs
-  lookups with limited concurrency, and handles the manual per-row product override.
+  `lookupComponentEol` never rejects - it always resolves to `{ ok, slug, cycle, status, label, eolDate, error }`.
+  `error` is only non-null when `ok` is false, and captures enough (`message`, `url`, `httpStatus`, `body`) to
+  show the user the real API response, not just a generic failure message.
+- `js/app.js` - the only file that touches the DOM. Wires the **Upload SBOM** button/drag-drop, renders the
+  table, runs lookups with limited concurrency, and handles the manual per-row product override. `ok: true`
+  results render as a green checkmark with the EOL label/date; `ok: false` results render as a clickable red X
+  that opens the `#error-modal` dialog with `row.eol.error`.
 
 Keep this separation: parsing/matching logic (`purl.js`, `sbom-parser.js`, the pure exports of
 `eol-client.js`) must stay framework-free and testable with `node:test`; `app.js` stays the only DOM-touching
@@ -56,3 +61,12 @@ the user explicitly asks - the whole point is a zero-build, easy-to-share page.
   they stay unit-testable via `node --test`.
 - When adding a new SBOM format or matching rule, add a corresponding test under `tests/` and, if it's a new
   SBOM format, a sample file under `samples/`.
+- `js/app.js` updates a row's result cell in place (`updateResultCell`) rather than replacing the whole `<tr>`.
+  Don't reintroduce whole-row replacement on lookup - the row's "Product match" `<input>` must stay mounted
+  (and keep focus) across a lookup it itself triggered, or you'll reintroduce a DOM race between the input's
+  own event dispatch and the re-render. Each lookup is tagged with an incrementing `row.lookupSeq`; a result is
+  only applied if it's still the latest one for that row.
+- CSS gotcha already hit once: an element's `hidden` attribute only wins over an author `display` rule if there
+  is an explicit `[hidden] { display: none }` override in the stylesheet (author CSS beats the UA stylesheet at
+  equal specificity). `#error-modal` relies on `.modal-overlay[hidden] { display: none; }` in `css/styles.css`
+  for this reason - don't drop it when touching modal/overlay styles.

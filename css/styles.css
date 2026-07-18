@@ -67,8 +67,14 @@ header h1 {
   border-color: var(--accent);
 }
 
-#drop-zone input[type="file"] {
-  margin-top: 0.75rem;
+#drop-zone p {
+  color: var(--muted);
+  margin: 0.75rem 0 0;
+}
+
+#upload-btn {
+  font-size: 1rem;
+  padding: 0.65rem 1.5rem;
 }
 
 #status {
@@ -161,34 +167,74 @@ thead th {
   word-break: break-all;
 }
 
-.badge {
-  display: inline-block;
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  margin-right: 0.4rem;
+.summary-item {
+  color: var(--unknown);
+  background: var(--unknown-bg);
 }
 
-.badge-eol, .summary-item.badge-eol {
-  color: var(--eol);
-  background: var(--eol-bg);
-}
-
-.badge-eol-scheduled, .summary-item.badge-eol-scheduled {
-  color: var(--eol-scheduled);
-  background: var(--eol-scheduled-bg);
-}
-
-.badge-supported, .summary-item.badge-supported {
+.summary-item.summary-ok {
   color: var(--supported);
   background: var(--supported-bg);
 }
 
-.badge-not-tracked, .badge-no-version-match, .badge-unknown, .badge-pending, .badge-error,
-.summary-item.badge-not-tracked {
-  color: var(--unknown);
+.summary-item.summary-eol {
+  color: var(--eol);
+  background: var(--eol-bg);
+}
+
+.summary-item.summary-error {
+  color: var(--eol);
+  background: var(--eol-bg);
+}
+
+.result-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.mark-ok {
+  color: var(--supported);
+  background: var(--supported-bg);
+}
+
+.mark-error {
+  color: var(--eol);
+  background: var(--eol-bg);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.95rem;
+}
+
+.mark-error:hover, .mark-error:focus-visible {
+  outline: 2px solid var(--eol);
+}
+
+.mark-pending {
+  color: var(--muted);
   background: var(--unknown-bg);
+}
+
+.result-text {
+  font-size: 0.85rem;
+}
+
+.result-text.result-text-error {
+  color: var(--muted);
+  font-style: italic;
 }
 
 .eol-link {
@@ -204,4 +250,92 @@ thead th {
 footer {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 10;
+}
+
+.modal {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 640px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--eol);
+}
+
+.modal-close {
+  background: transparent;
+  color: var(--fg);
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+
+.modal-body {
+  padding: 1.25rem;
+}
+
+.modal-body dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.modal-body dt {
+  color: var(--muted);
+}
+
+.modal-body dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.modal-body p {
+  font-size: 0.9rem;
+}
+
+.modal-raw {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
 }

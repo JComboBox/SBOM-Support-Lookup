@@ -1,4 +1,6 @@
 // Client for the public endoflife.date API (https://endoflife.date/docs/api).
+// Note: this project (and endoflife.date itself) used to live at endoflife.me;
+// that domain now redirects to endoflife.date, which is the host used below.
 // Runs entirely in the browser - no server/API key required.
 
 export const EOL_API_BASE = 'https://endoflife.date/api';
@@ -28,18 +30,45 @@ export function resetCaches() {
   cycleCache.clear();
 }
 
+/**
+ * Fetches and parses a JSON endpoint, throwing a descriptive Error (with
+ * `.url`, `.status`, and `.body` attached) on any network or HTTP failure so
+ * callers can surface the real API response to the user.
+ */
+async function fetchJson(url) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (networkErr) {
+    const err = new Error(`Network error while requesting ${url}: ${networkErr.message}`);
+    err.url = url;
+    throw err;
+  }
+
+  if (!res.ok) {
+    let body = '';
+    try {
+      body = await res.text();
+    } catch {
+      body = '';
+    }
+    const err = new Error(`Request to ${url} failed with HTTP ${res.status}`);
+    err.url = url;
+    err.status = res.status;
+    err.body = body;
+    throw err;
+  }
+
+  return res.json();
+}
+
 /** @returns {Promise<string[]>} the full list of product slugs tracked by endoflife.date */
 export function getAllProducts() {
   if (!productListPromise) {
-    productListPromise = fetch(`${EOL_API_BASE}/all.json`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to load product list (HTTP ${res.status})`);
-        return res.json();
-      })
-      .catch((err) => {
-        productListPromise = null;
-        throw err;
-      });
+    productListPromise = fetchJson(`${EOL_API_BASE}/all.json`).catch((err) => {
+      productListPromise = null;
+      throw err;
+    });
   }
   return productListPromise;
 }
@@ -80,15 +109,10 @@ export async function findProductSlug(component) {
 /** @param {string} product @returns {Promise<any[]>} the release cycles for a product */
 export function getCycles(product) {
   if (cycleCache.has(product)) return cycleCache.get(product);
-  const promise = fetch(`${EOL_API_BASE}/${encodeURIComponent(product)}.json`)
-    .then((res) => {
-      if (!res.ok) throw new Error(`Failed to load EOL data for "${product}" (HTTP ${res.status})`);
-      return res.json();
-    })
-    .catch((err) => {
-      cycleCache.delete(product);
-      throw err;
-    });
+  const promise = fetchJson(`${EOL_API_BASE}/${encodeURIComponent(product)}.json`).catch((err) => {
+    cycleCache.delete(product);
+    throw err;
+  });
   cycleCache.set(product, promise);
   return promise;
 }
@@ -149,26 +173,94 @@ export function interpretEol(cycle) {
   return { status: 'unknown', label: 'Unknown', eolDate: null };
 }
 
+function buildErrorResult(err, { slug = null, fallbackUrl = null } = {}) {
+  return {
+    ok: false,
+    slug,
+    cycle: null,
+    status: 'error',
+    label: 'Request failed',
+    eolDate: null,
+    error: {
+      message: err.message,
+      url: err.url || fallbackUrl,
+      httpStatus: typeof err.status === 'number' ? err.status : null,
+      body: err.body ?? null
+    }
+  };
+}
+
 /**
  * Full lookup for one SBOM component: find a matching product, fetch its
  * cycles, and interpret the EOL status for the component's version.
+ *
+ * Always resolves (never rejects). The returned object's `ok` flag tells the
+ * caller whether the lookup succeeded; when `ok` is false, `error` describes
+ * why (a real HTTP/network failure, or a local "no match" condition) so the
+ * UI can show the raw detail on demand.
+ *
  * @param {{name: string, version: string, type?: string}} component
  * @param {string} [overrideSlug] force a specific product slug instead of auto-matching
  */
 export async function lookupComponentEol(component, overrideSlug) {
-  const slug = overrideSlug || (await findProductSlug(component));
+  let slug = overrideSlug || null;
 
   if (!slug) {
-    return { slug: null, cycle: null, status: 'not-tracked', label: 'Not tracked on endoflife.date', eolDate: null };
+    try {
+      slug = await findProductSlug(component);
+    } catch (err) {
+      return buildErrorResult(err, { fallbackUrl: `${EOL_API_BASE}/all.json` });
+    }
   }
 
-  const cycles = await getCycles(slug);
+  if (!slug) {
+    return {
+      ok: false,
+      slug: null,
+      cycle: null,
+      status: 'not-tracked',
+      label: 'Not tracked on endoflife.date',
+      eolDate: null,
+      error: {
+        message:
+          `No product on endoflife.date matched the package name "${component.name}". endoflife.date ` +
+          'primarily tracks languages, frameworks, platforms, and OS distributions rather than individual ' +
+          'libraries. Use the "Product match" field on this row to point it at the correct product slug if ' +
+          'one exists.',
+        url: null,
+        httpStatus: null,
+        body: null
+      }
+    };
+  }
+
+  let cycles;
+  try {
+    cycles = await getCycles(slug);
+  } catch (err) {
+    return buildErrorResult(err, { slug, fallbackUrl: `${EOL_API_BASE}/${slug}.json` });
+  }
+
   const cycle = matchCycle(cycles, component.version);
-  const result = interpretEol(cycle);
-
   if (!cycle) {
-    return { slug, cycle: null, status: 'no-version-match', label: `No matching release for "${component.version || 'unknown'}" in ${slug}`, eolDate: null };
+    return {
+      ok: false,
+      slug,
+      cycle: null,
+      status: 'no-version-match',
+      label: `No matching release for "${component.version || 'unknown'}" in ${slug}`,
+      eolDate: null,
+      error: {
+        message:
+          `endoflife.date tracks "${slug}" but has no release cycle matching version ` +
+          `"${component.version || '(none)'}". Known cycles: ${cycles.map((c) => c.cycle).join(', ') || '(none)'}.`,
+        url: `${EOL_API_BASE}/${slug}.json`,
+        httpStatus: 200,
+        body: null
+      }
+    };
   }
 
-  return { slug, cycle, ...result };
+  const interpreted = interpretEol(cycle);
+  return { ok: true, slug, cycle, error: null, ...interpreted };
 }
