@@ -1,0 +1,32 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "sample-spdx-sbom",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-php",
+      "name": "php",
+      "versionInfo": "7.4.33",
+      "externalRefs": [
+        { "referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:generic/php@7.4.33" }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-wordpress",
+      "name": "wordpress",
+      "versionInfo": "6.2",
+      "externalRefs": [
+        { "referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:generic/wordpress@6.2" }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-flask",
+      "name": "flask",
+      "versionInfo": "2.3.2",
+      "externalRefs": [
+        { "referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:pypi/flask@2.3.2" }
+      ]
+    }
+  ]
+}
