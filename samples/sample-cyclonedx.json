@@ -1,0 +1,57 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79",
+  "version": 1,
+  "components": [
+    {
+      "type": "platform",
+      "name": "python",
+      "version": "3.9.6",
+      "purl": "pkg:generic/python@3.9.6"
+    },
+    {
+      "type": "platform",
+      "name": "node",
+      "version": "18.16.0",
+      "purl": "pkg:generic/node@18.16.0"
+    },
+    {
+      "type": "library",
+      "name": "django",
+      "version": "3.2.19",
+      "purl": "pkg:pypi/django@3.2.19"
+    },
+    {
+      "type": "library",
+      "name": "requests",
+      "version": "2.31.0",
+      "purl": "pkg:pypi/requests@2.31.0"
+    },
+    {
+      "type": "library",
+      "name": "lodash",
+      "version": "4.17.21",
+      "purl": "pkg:npm/lodash@4.17.21"
+    },
+    {
+      "type": "library",
+      "group": "@angular",
+      "name": "core",
+      "version": "15.2.0",
+      "purl": "pkg:npm/%40angular/core@15.2.0"
+    },
+    {
+      "type": "application",
+      "name": "postgresql",
+      "version": "13.4",
+      "purl": "pkg:generic/postgresql@13.4"
+    },
+    {
+      "type": "application",
+      "name": "ubuntu",
+      "version": "20.04",
+      "purl": "pkg:generic/ubuntu@20.04"
+    }
+  ]
+}
