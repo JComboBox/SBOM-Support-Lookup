@@ -18,10 +18,14 @@ file (`dist/sbom-support-lookup.html`) that runs with nothing but a double-click
   order: `purl.js`, `sbom-parser.js`, `eol-client.js`, `app.js`) into `index.html`'s `<link>`/`<script
   type="module">` tags, stripping `import`/`export` syntax, and writes the result to
   `dist/sbom-support-lookup.html`. That file is a single, dependency-free HTML file meant to be handed to
-  someone and opened directly via `file://` - no server required. It's checked into the repo; **regenerate and
-  commit it whenever `index.html`, `css/styles.css`, or any `js/*.js` file changes**, or it'll drift from the
-  source. This is plain string concatenation (no bundler/transpiler) - keep it that way; don't reach for
-  webpack/esbuild/etc. for this.
+  someone and opened directly via `file://` - no server required. `dist/` is gitignored, not committed - CI
+  (see below) rebuilds it fresh on every merge to `main` and attaches it to a GitHub Release, which is the
+  canonical way to get the latest standalone build. This is plain string concatenation (no bundler/transpiler)
+  - keep it that way; don't reach for webpack/esbuild/etc. for this.
+- `.github/workflows/release.yml` - on every push to `main`: runs `npm run test:coverage` (fails the workflow,
+  and thus blocks the release, if any test fails), uploads the coverage report (`coverage/lcov.info` + a
+  `genhtml`-generated HTML report) as a workflow artifact, runs `npm run build`, and publishes a GitHub Release
+  (tag `build-<run number>`) with `dist/sbom-support-lookup.html` attached via `softprops/action-gh-release`.
 - `js/purl.js` - pure function `parsePurl(purl)`, no dependencies, no DOM/browser APIs.
 - `js/sbom-parser.js` - pure function `extractComponents(sbomJson)`, detects CycloneDX vs SPDX and flattens to
   `{ name, version, purl, type, group }[]`. No DOM/browser APIs.
@@ -43,9 +47,10 @@ file.
 ## Running it
 
 ```bash
-npm start   # npx serve on http://localhost:5173 - for development
-npm test    # node --test
-npm run build   # regenerate dist/sbom-support-lookup.html
+npm start           # npx serve on http://localhost:5173 - for development
+npm test            # node --test
+npm run test:coverage   # node --test --experimental-test-coverage, scoped to js/**/*.js, writes coverage/lcov.info
+npm run build       # regenerate dist/sbom-support-lookup.html
 ```
 
 `index.html` uses `<script type="module">`, so it must be served over http(s) (`npm start`, or any static file
@@ -85,3 +90,6 @@ is plain string concatenation, not an exception to this - don't grow it into a r
   is an explicit `[hidden] { display: none }` override in the stylesheet (author CSS beats the UA stylesheet at
   equal specificity). `#error-modal` relies on `.modal-overlay[hidden] { display: none; }` in `css/styles.css`
   for this reason - don't drop it when touching modal/overlay styles.
+- `dist/` and `coverage/` are both gitignored - they're generated artifacts (the standalone build and the test
+  coverage report, respectively), not source. Don't commit them or add them back to version control; CI
+  regenerates both on every push to `main`.
