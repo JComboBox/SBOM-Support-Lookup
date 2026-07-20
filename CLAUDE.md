@@ -4,14 +4,24 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-A static, client-side web app (no backend, no build step) that lets someone upload an SBOM (CycloneDX or SPDX
-JSON), see every package's purl, and check end-of-life status for those packages via the public
-[endoflife.date](https://endoflife.date) API. It's meant to be trivially cloneable and shareable: open one
-HTML page (served statically) and it works.
+A static, client-side web app (no backend) that lets someone upload an SBOM (CycloneDX or SPDX JSON), see
+every package's purl, and check end-of-life status for those packages via the public
+[endoflife.date](https://endoflife.date) API. It's meant to be trivially cloneable and shareable: for
+development it's a served multi-file page; for distribution, `npm run build` produces one self-contained HTML
+file (`dist/sbom-support-lookup.html`) that runs with nothing but a double-click - no server, no dependencies.
 
 ## Architecture
 
-- `index.html` - page shell, loads `js/app.js` as an ES module.
+- `index.html` - page shell, loads `js/app.js` as an ES module. This is the source-of-truth markup used for
+  local development (`npm start`).
+- `scripts/build-standalone.js` (`npm run build`) - inlines `css/styles.css` and `js/*.js` (in dependency
+  order: `purl.js`, `sbom-parser.js`, `eol-client.js`, `app.js`) into `index.html`'s `<link>`/`<script
+  type="module">` tags, stripping `import`/`export` syntax, and writes the result to
+  `dist/sbom-support-lookup.html`. That file is a single, dependency-free HTML file meant to be handed to
+  someone and opened directly via `file://` - no server required. It's checked into the repo; **regenerate and
+  commit it whenever `index.html`, `css/styles.css`, or any `js/*.js` file changes**, or it'll drift from the
+  source. This is plain string concatenation (no bundler/transpiler) - keep it that way; don't reach for
+  webpack/esbuild/etc. for this.
 - `js/purl.js` - pure function `parsePurl(purl)`, no dependencies, no DOM/browser APIs.
 - `js/sbom-parser.js` - pure function `extractComponents(sbomJson)`, detects CycloneDX vs SPDX and flattens to
   `{ name, version, purl, type, group }[]`. No DOM/browser APIs.
@@ -33,15 +43,20 @@ file.
 ## Running it
 
 ```bash
-npm start   # npx serve on http://localhost:5173
+npm start   # npx serve on http://localhost:5173 - for development
 npm test    # node --test
+npm run build   # regenerate dist/sbom-support-lookup.html
 ```
 
-The app uses `<script type="module">`, so it must be served over http(s) (`npm start`, or any static file
-server) - opening `index.html` directly via `file://` will fail in Chromium-based browsers.
+`index.html` uses `<script type="module">`, so it must be served over http(s) (`npm start`, or any static file
+server) during development - opening it directly via `file://` will fail in Chromium-based browsers. The
+generated `dist/sbom-support-lookup.html` has no module `import`s (everything is inlined into one classic
+`<script>`), so *that* file is the one meant to be opened via `file://`/double-clicked/shared with someone
+who just wants to run the app.
 
 There is no bundler, transpiler, or framework in this project. Do not add one (webpack/vite/react/etc.) unless
-the user explicitly asks - the whole point is a zero-build, easy-to-share page.
+the user explicitly asks - the whole point is a zero-build, easy-to-share page. `scripts/build-standalone.js`
+is plain string concatenation, not an exception to this - don't grow it into a real bundler.
 
 ## endoflife.date API notes
 

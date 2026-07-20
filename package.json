@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "npx --yes serve -l 5173 .",
-    "test": "node --test"
+    "test": "node --test",
+    "build": "node scripts/build-standalone.js"
   },
   "engines": {
     "node": ">=18"

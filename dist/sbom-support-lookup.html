@@ -1,0 +1,1117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SBOM Support Lookup</title>
+  <style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6b7280;
+  --border: #d9dce1;
+  --accent: #2563eb;
+  --panel: #f7f8fa;
+
+  --eol: #b91c1c;
+  --eol-bg: #fee2e2;
+  --eol-scheduled: #92400e;
+  --eol-scheduled-bg: #fef3c7;
+  --supported: #166534;
+  --supported-bg: #dcfce7;
+  --unknown: #4b5563;
+  --unknown-bg: #e5e7eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --fg: #e5e7eb;
+    --muted: #9ca3af;
+    --border: #2a2e37;
+    --accent: #60a5fa;
+    --panel: #171a21;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+header, main, footer {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+header h1 {
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: var(--muted);
+  max-width: 70ch;
+}
+
+#drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  background: var(--panel);
+}
+
+#drop-zone.drag-over {
+  border-color: var(--accent);
+}
+
+#drop-zone p {
+  color: var(--muted);
+  margin: 0.75rem 0 0;
+}
+
+#upload-btn {
+  font-size: 1rem;
+  padding: 0.65rem 1.5rem;
+}
+
+#status {
+  color: var(--muted);
+  min-height: 1.25rem;
+}
+
+.status-error {
+  color: var(--eol);
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input[type="text"] {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+
+#filter-input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.summary {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.summary-item {
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+thead th {
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+}
+
+.purl-cell code {
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.summary-item {
+  color: var(--unknown);
+  background: var(--unknown-bg);
+}
+
+.summary-item.summary-ok {
+  color: var(--supported);
+  background: var(--supported-bg);
+}
+
+.summary-item.summary-eol {
+  color: var(--eol);
+  background: var(--eol-bg);
+}
+
+.summary-item.summary-error {
+  color: var(--eol);
+  background: var(--eol-bg);
+}
+
+.result-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.mark-ok {
+  color: var(--supported);
+  background: var(--supported-bg);
+}
+
+.mark-error {
+  color: var(--eol);
+  background: var(--eol-bg);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.95rem;
+}
+
+.mark-error:hover, .mark-error:focus-visible {
+  outline: 2px solid var(--eol);
+}
+
+.mark-pending {
+  color: var(--muted);
+  background: var(--unknown-bg);
+}
+
+.result-text {
+  font-size: 0.85rem;
+}
+
+.result-text.result-text-error {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.eol-link {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.override-input {
+  width: 100%;
+  min-width: 160px;
+}
+
+footer {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 10;
+}
+
+.modal {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 640px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--eol);
+}
+
+.modal-close {
+  background: transparent;
+  color: var(--fg);
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+
+.modal-body {
+  padding: 1.25rem;
+}
+
+.modal-body dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.modal-body dt {
+  color: var(--muted);
+}
+
+.modal-body dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.modal-body p {
+  font-size: 0.9rem;
+}
+
+.modal-raw {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+}
+</style>
+</head>
+<body>
+  <header>
+    <h1>SBOM Support Lookup</h1>
+    <p class="subtitle">
+      Upload an SBOM, list every package's PURL, and check end-of-life status against
+      <a href="https://endoflife.date" target="_blank" rel="noopener">endoflife.date</a>.
+      Everything runs in your browser - the SBOM file never leaves your machine.
+    </p>
+  </header>
+
+  <main>
+    <section id="upload-section">
+      <div id="drop-zone">
+        <button id="upload-btn" type="button">Upload SBOM</button>
+        <p>or drag &amp; drop a CycloneDX or SPDX JSON SBOM file here</p>
+        <input type="file" id="sbom-file" accept="application/json,.json" hidden />
+      </div>
+      <p id="status" role="status"></p>
+    </section>
+
+    <section id="table-section" hidden>
+      <div class="toolbar">
+        <button id="lookup-btn" type="button" disabled>Load End of Life Dates</button>
+        <input type="text" id="filter-input" placeholder="Filter by name, version, purl, or product..." />
+      </div>
+      <div id="summary" class="summary"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Version</th>
+              <th>PURL</th>
+              <th>Type</th>
+              <th>End-of-life result</th>
+              <th>Product match (editable)</th>
+            </tr>
+          </thead>
+          <tbody id="components-body"></tbody>
+        </table>
+      </div>
+      <datalist id="product-list"></datalist>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      EOL data courtesy of the <a href="https://endoflife.date" target="_blank" rel="noopener">endoflife.date</a> public API.
+      Product matching is a best-effort heuristic based on package name - use the "Product match" column to correct it.
+    </p>
+  </footer>
+
+  <div id="error-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="error-modal-title">
+      <div class="modal-header">
+        <h2 id="error-modal-title">Lookup failed</h2>
+        <button type="button" id="error-modal-close" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div id="error-modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+// ---- js/purl.js ----
+// Minimal parser for Package URLs (purl): https://github.com/package-url/purl-spec
+// Format: pkg:type/namespace/name@version?qualifiers#subpath
+
+/**
+ * @param {string} purl
+ * @returns {{type: string, namespace: string, name: string, version: string,
+ *            qualifiers: Record<string,string>, subpath: string} | null}
+ */
+function parsePurl(purl) {
+  if (typeof purl !== 'string' || !purl.startsWith('pkg:')) return null;
+
+  try {
+    const body = purl.slice('pkg:'.length);
+
+    const hashIndex = body.indexOf('#');
+    const subpathRaw = hashIndex === -1 ? '' : body.slice(hashIndex + 1);
+    const withoutSubpath = hashIndex === -1 ? body : body.slice(0, hashIndex);
+
+    const qIndex = withoutSubpath.indexOf('?');
+    const qualifierStr = qIndex === -1 ? '' : withoutSubpath.slice(qIndex + 1);
+    const withoutQualifiers = qIndex === -1 ? withoutSubpath : withoutSubpath.slice(0, qIndex);
+
+    const segments = withoutQualifiers.split('/').filter((s) => s.length > 0);
+    if (segments.length < 2) return null;
+
+    const type = decodeURIComponent(segments.shift()).toLowerCase();
+    let rawNameAndVersion = segments.pop();
+    const namespace = segments.map(decodeURIComponent).join('/');
+
+    const atIndex = rawNameAndVersion.lastIndexOf('@');
+    let rawVersion = '';
+    if (atIndex !== -1) {
+      rawVersion = rawNameAndVersion.slice(atIndex + 1);
+      rawNameAndVersion = rawNameAndVersion.slice(0, atIndex);
+    }
+    const name = decodeURIComponent(rawNameAndVersion);
+    const version = rawVersion ? decodeURIComponent(rawVersion) : '';
+
+    const qualifiers = {};
+    if (qualifierStr) {
+      for (const pair of qualifierStr.split('&')) {
+        if (!pair) continue;
+        const [k, v = ''] = pair.split('=');
+        if (k) qualifiers[decodeURIComponent(k)] = decodeURIComponent(v);
+      }
+    }
+
+    return {
+      type,
+      namespace,
+      name,
+      version,
+      qualifiers,
+      subpath: subpathRaw ? decodeURIComponent(subpathRaw) : ''
+    };
+  } catch {
+    return null;
+  }
+}
+// ---- end js/purl.js ----
+
+// ---- js/sbom-parser.js ----
+// Extracts a flat list of { name, version, purl, type, group } components
+// from a CycloneDX or SPDX (JSON) SBOM document.
+
+
+/**
+ * @param {any} sbomJson
+ * @returns {Array<{name: string, version: string, purl: string, type: string, group: string}>}
+ */
+function extractComponents(sbomJson) {
+  if (!sbomJson || typeof sbomJson !== 'object') {
+    throw new Error('SBOM file did not contain a JSON object.');
+  }
+
+  if (sbomJson.bomFormat === 'CycloneDX' || Array.isArray(sbomJson.components)) {
+    return extractCycloneDX(sbomJson);
+  }
+
+  if (sbomJson.spdxVersion || Array.isArray(sbomJson.packages)) {
+    return extractSPDX(sbomJson);
+  }
+
+  throw new Error('Unrecognized SBOM format. Expected a CycloneDX or SPDX JSON document.');
+}
+
+function extractCycloneDX(bom) {
+  const components = [];
+
+  const walk = (list) => {
+    if (!Array.isArray(list)) return;
+    for (const c of list) {
+      components.push({
+        name: c.name || '(unknown)',
+        version: c.version || '',
+        purl: c.purl || '',
+        type: c.type || '',
+        group: c.group || ''
+      });
+      if (c.components) walk(c.components);
+    }
+  };
+
+  walk(bom.components);
+  return components;
+}
+
+function extractSPDX(doc) {
+  const components = [];
+
+  for (const pkg of doc.packages || []) {
+    const purlRef = (pkg.externalRefs || []).find((r) => r.referenceType === 'purl');
+    const purl = purlRef ? purlRef.referenceLocator : '';
+    const parsed = purl ? parsePurl(purl) : null;
+
+    components.push({
+      name: pkg.name || '(unknown)',
+      version: pkg.versionInfo || parsed?.version || '',
+      purl,
+      type: parsed?.type || '',
+      group: parsed?.namespace || ''
+    });
+  }
+
+  return components;
+}
+// ---- end js/sbom-parser.js ----
+
+// ---- js/eol-client.js ----
+// Client for the public endoflife.date API (https://endoflife.date/docs/api).
+// Note: this project (and endoflife.date itself) used to live at endoflife.me;
+// that domain now redirects to endoflife.date, which is the host used below.
+// Runs entirely in the browser - no server/API key required.
+
+const EOL_API_BASE = 'https://endoflife.date/api';
+
+// Maps common purl/package names or ecosystem hints to endoflife.date product slugs.
+// endoflife.date mostly tracks platforms, languages, and major frameworks/distros -
+// not every library in npm/PyPI/etc. will have a match, which is expected.
+const PRODUCT_ALIASES = {
+  node: 'nodejs',
+  nodejs: 'nodejs',
+  golang: 'go',
+  'dotnet-core': 'dotnet',
+  dotnetcore: 'dotnet',
+  openjdk: 'java',
+  jdk: 'java',
+  postgres: 'postgresql',
+  mongo: 'mongodb',
+  psql: 'postgresql'
+};
+
+let productListPromise = null;
+const cycleCache = new Map();
+
+/** Clears in-memory caches (useful between test runs / new SBOM uploads). */
+function resetCaches() {
+  productListPromise = null;
+  cycleCache.clear();
+}
+
+/**
+ * Fetches and parses a JSON endpoint, throwing a descriptive Error (with
+ * `.url`, `.status`, and `.body` attached) on any network or HTTP failure so
+ * callers can surface the real API response to the user.
+ */
+async function fetchJson(url) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (networkErr) {
+    const err = new Error(`Network error while requesting ${url}: ${networkErr.message}`);
+    err.url = url;
+    throw err;
+  }
+
+  if (!res.ok) {
+    let body = '';
+    try {
+      body = await res.text();
+    } catch {
+      body = '';
+    }
+    const err = new Error(`Request to ${url} failed with HTTP ${res.status}`);
+    err.url = url;
+    err.status = res.status;
+    err.body = body;
+    throw err;
+  }
+
+  return res.json();
+}
+
+/** @returns {Promise<string[]>} the full list of product slugs tracked by endoflife.date */
+function getAllProducts() {
+  if (!productListPromise) {
+    productListPromise = fetchJson(`${EOL_API_BASE}/all.json`).catch((err) => {
+      productListPromise = null;
+      throw err;
+    });
+  }
+  return productListPromise;
+}
+
+/** @param {string} name @returns {string} a lowercase, hyphenated slug candidate */
+function normalize(name) {
+  return String(name || '')
+    .toLowerCase()
+    .trim()
+    .replace(/^@[^/]+\//, '') // strip npm scope, e.g. @angular/core -> core
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Attempts to match a parsed component to an endoflife.date product slug.
+ * @param {{name: string, type?: string}} component
+ * @returns {Promise<string|null>}
+ */
+async function findProductSlug(component) {
+  const products = await getAllProducts();
+  const productSet = new Set(products);
+
+  const candidates = [];
+  const normName = normalize(component.name);
+  candidates.push(normName);
+  if (PRODUCT_ALIASES[normName]) candidates.push(PRODUCT_ALIASES[normName]);
+
+  const normType = normalize(component.type || '');
+  if (PRODUCT_ALIASES[normType]) candidates.push(PRODUCT_ALIASES[normType]);
+
+  for (const candidate of candidates) {
+    if (candidate && productSet.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** @param {string} product @returns {Promise<any[]>} the release cycles for a product */
+function getCycles(product) {
+  if (cycleCache.has(product)) return cycleCache.get(product);
+  const promise = fetchJson(`${EOL_API_BASE}/${encodeURIComponent(product)}.json`).catch((err) => {
+    cycleCache.delete(product);
+    throw err;
+  });
+  cycleCache.set(product, promise);
+  return promise;
+}
+
+/** Extracts "major" or "major.minor" from a free-form version string. */
+function versionMajorMinor(version) {
+  const m = String(version || '').match(/^v?(\d+)(?:\.(\d+))?/);
+  if (!m) return null;
+  return m[2] !== undefined ? `${m[1]}.${m[2]}` : m[1];
+}
+
+/**
+ * Finds the best-matching release cycle for a component version.
+ * Tries an exact cycle match first, then major.minor, then major only.
+ */
+function matchCycle(cycles, version) {
+  if (!Array.isArray(cycles) || cycles.length === 0) return null;
+
+  const vStr = String(version || '');
+  let match = cycles.find((c) => String(c.cycle) === vStr);
+  if (match) return match;
+
+  const mm = versionMajorMinor(vStr);
+  if (mm) {
+    match = cycles.find((c) => String(c.cycle) === mm);
+    if (match) return match;
+
+    const major = mm.split('.')[0];
+    match = cycles.find((c) => String(c.cycle) === major);
+    if (match) return match;
+  }
+
+  return null;
+}
+
+/**
+ * Interprets a release cycle's `eol` field into a display-friendly status.
+ * `eol` is `false` (still supported), `true` (eol, no date known), or an ISO date string.
+ */
+function interpretEol(cycle) {
+  if (!cycle) return { status: 'unknown', label: 'Unknown', eolDate: null };
+
+  const eol = cycle.eol;
+
+  if (eol === false) return { status: 'supported', label: 'Supported (no EOL date set)', eolDate: null };
+  if (eol === true) return { status: 'eol', label: 'End of life', eolDate: null };
+
+  if (typeof eol === 'string') {
+    const eolDate = new Date(`${eol}T00:00:00Z`);
+    const isPast = !Number.isNaN(eolDate.getTime()) && eolDate.getTime() <= Date.now();
+    return {
+      status: isPast ? 'eol' : 'eol-scheduled',
+      label: isPast ? `End of life since ${eol}` : `Supported until ${eol}`,
+      eolDate: eol
+    };
+  }
+
+  return { status: 'unknown', label: 'Unknown', eolDate: null };
+}
+
+function buildErrorResult(err, { slug = null, fallbackUrl = null } = {}) {
+  return {
+    ok: false,
+    slug,
+    cycle: null,
+    status: 'error',
+    label: 'Request failed',
+    eolDate: null,
+    error: {
+      message: err.message,
+      url: err.url || fallbackUrl,
+      httpStatus: typeof err.status === 'number' ? err.status : null,
+      body: err.body ?? null
+    }
+  };
+}
+
+/**
+ * Full lookup for one SBOM component: find a matching product, fetch its
+ * cycles, and interpret the EOL status for the component's version.
+ *
+ * Always resolves (never rejects). The returned object's `ok` flag tells the
+ * caller whether the lookup succeeded; when `ok` is false, `error` describes
+ * why (a real HTTP/network failure, or a local "no match" condition) so the
+ * UI can show the raw detail on demand.
+ *
+ * @param {{name: string, version: string, type?: string}} component
+ * @param {string} [overrideSlug] force a specific product slug instead of auto-matching
+ */
+async function lookupComponentEol(component, overrideSlug) {
+  let slug = overrideSlug || null;
+
+  if (!slug) {
+    try {
+      slug = await findProductSlug(component);
+    } catch (err) {
+      return buildErrorResult(err, { fallbackUrl: `${EOL_API_BASE}/all.json` });
+    }
+  }
+
+  if (!slug) {
+    return {
+      ok: false,
+      slug: null,
+      cycle: null,
+      status: 'not-tracked',
+      label: 'Not tracked on endoflife.date',
+      eolDate: null,
+      error: {
+        message:
+          `No product on endoflife.date matched the package name "${component.name}". endoflife.date ` +
+          'primarily tracks languages, frameworks, platforms, and OS distributions rather than individual ' +
+          'libraries. Use the "Product match" field on this row to point it at the correct product slug if ' +
+          'one exists.',
+        url: null,
+        httpStatus: null,
+        body: null
+      }
+    };
+  }
+
+  let cycles;
+  try {
+    cycles = await getCycles(slug);
+  } catch (err) {
+    return buildErrorResult(err, { slug, fallbackUrl: `${EOL_API_BASE}/${slug}.json` });
+  }
+
+  const cycle = matchCycle(cycles, component.version);
+  if (!cycle) {
+    return {
+      ok: false,
+      slug,
+      cycle: null,
+      status: 'no-version-match',
+      label: `No matching release for "${component.version || 'unknown'}" in ${slug}`,
+      eolDate: null,
+      error: {
+        message:
+          `endoflife.date tracks "${slug}" but has no release cycle matching version ` +
+          `"${component.version || '(none)'}". Known cycles: ${cycles.map((c) => c.cycle).join(', ') || '(none)'}.`,
+        url: `${EOL_API_BASE}/${slug}.json`,
+        httpStatus: 200,
+        body: null
+      }
+    };
+  }
+
+  const interpreted = interpretEol(cycle);
+  return { ok: true, slug, cycle, error: null, ...interpreted };
+}
+// ---- end js/eol-client.js ----
+
+// ---- js/app.js ----
+const uploadBtn = document.getElementById('upload-btn');
+const fileInput = document.getElementById('sbom-file');
+const dropZone = document.getElementById('drop-zone');
+const lookupBtn = document.getElementById('lookup-btn');
+const filterInput = document.getElementById('filter-input');
+const statusEl = document.getElementById('status');
+const summaryEl = document.getElementById('summary');
+const tableBody = document.getElementById('components-body');
+const tableSection = document.getElementById('table-section');
+const productDatalist = document.getElementById('product-list');
+
+const errorModal = document.getElementById('error-modal');
+const errorModalBody = document.getElementById('error-modal-body');
+const errorModalClose = document.getElementById('error-modal-close');
+
+/** @type {Array<{name: string, version: string, purl: string, type: string, group: string, eol: any}>} */
+let rows = [];
+
+const LOOKUP_CONCURRENCY = 6;
+
+uploadBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (file) handleFile(file);
+});
+
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files?.[0];
+  if (file) handleFile(file);
+});
+
+lookupBtn.addEventListener('click', () => runLookups());
+filterInput.addEventListener('input', () => renderTable());
+
+errorModalClose.addEventListener('click', closeErrorModal);
+errorModal.addEventListener('click', (e) => {
+  if (e.target === errorModal) closeErrorModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !errorModal.hidden) closeErrorModal();
+});
+
+/** Reads the uploaded SBOM file and populates the package table. */
+async function handleFile(file) {
+  setStatus(`Reading ${file.name}...`);
+  try {
+    const text = await file.text();
+    const json = JSON.parse(text);
+    const components = extractComponents(json);
+
+    rows = components.map((c, index) => ({
+      ...c,
+      id: index,
+      purlParsed: c.purl ? parsePurl(c.purl) : null,
+      eol: null,
+      lookupSeq: 0
+    }));
+
+    setStatus(
+      `Loaded ${rows.length} package${rows.length === 1 ? '' : 's'} from ${file.name}. ` +
+        'In memory only - nothing is uploaded anywhere.'
+    );
+    tableSection.hidden = rows.length === 0;
+    lookupBtn.disabled = rows.length === 0;
+    renderTable();
+    updateSummary();
+    preloadProductList();
+  } catch (err) {
+    console.error(err);
+    setStatus(`Could not read "${file.name}": ${err.message}`, true);
+  }
+}
+
+/** Warms the product-slug datalist used by the per-row "override" input. */
+async function preloadProductList() {
+  try {
+    const products = await getAllProducts();
+    productDatalist.innerHTML = products.map((p) => `<option value="${p}"></option>`).join('');
+  } catch (err) {
+    console.warn('Could not preload endoflife.date product list', err);
+  }
+}
+
+/** Runs an EOL lookup for every row, a few at a time, updating the UI as results arrive. */
+async function runLookups() {
+  lookupBtn.disabled = true;
+  setStatus('Loading end-of-life dates from endoflife.date...');
+
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < rows.length) {
+      const row = rows[cursor++];
+      await lookupRow(row);
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(LOOKUP_CONCURRENCY, rows.length) }, worker);
+  await Promise.all(workers);
+
+  const failed = rows.filter((r) => r.eol && !r.eol.ok).length;
+  setStatus(
+    `Done. Checked ${rows.length} package${rows.length === 1 ? '' : 's'} against endoflife.date` +
+      (failed ? ` - ${failed} could not be resolved (click the red X for details).` : '.')
+  );
+  lookupBtn.disabled = false;
+}
+
+/**
+ * Looks up a single row (used for both the batch run and per-row product overrides).
+ * Guarded with a per-row sequence number so that if a row is re-triggered (e.g. the
+ * user edits the product override again) before the previous lookup finishes, the
+ * stale result is discarded instead of clobbering the newer one.
+ */
+async function lookupRow(row) {
+  const seq = ++row.lookupSeq;
+  row.eol = { status: 'pending' };
+  updateResultCell(row);
+
+  let result;
+  try {
+    result = await lookupComponentEol(
+      { name: row.name, version: row.version, type: row.purlParsed?.type || row.type },
+      row.overrideSlug
+    );
+  } catch (err) {
+    // lookupComponentEol resolves rather than rejects; this only catches
+    // truly unexpected programmer errors so the UI never gets stuck.
+    result = {
+      ok: false,
+      slug: null,
+      status: 'error',
+      label: 'Unexpected error',
+      error: { message: err.message, url: null, httpStatus: null, body: null }
+    };
+  }
+
+  if (seq !== row.lookupSeq) return; // superseded by a newer lookup for this row
+  row.eol = result;
+  updateResultCell(row);
+  updateSummary();
+}
+
+function renderTable() {
+  const filter = filterInput.value.trim().toLowerCase();
+  tableBody.innerHTML = '';
+  for (const row of rows) {
+    if (filter && !rowMatchesFilter(row, filter)) continue;
+    tableBody.appendChild(buildRowElement(row));
+  }
+}
+
+function rowMatchesFilter(row, filter) {
+  return (
+    row.name.toLowerCase().includes(filter) ||
+    row.version.toLowerCase().includes(filter) ||
+    row.purl.toLowerCase().includes(filter) ||
+    (row.eol?.slug || '').toLowerCase().includes(filter)
+  );
+}
+
+/** Updates only the "End-of-life result" cell for a row, leaving the rest of the row untouched. */
+function updateResultCell(row) {
+  const tr = findRowElement(row);
+  if (!tr) return; // row is currently filtered out of view
+
+  const cell = tr.children[4];
+  cell.innerHTML = buildResultCellHtml(row);
+
+  const errorMark = cell.querySelector('.mark-error');
+  if (errorMark) errorMark.addEventListener('click', () => openErrorModal(row));
+}
+
+function findRowElement(row) {
+  return tableBody.querySelector(`tr[data-row-id="${row.id}"]`);
+}
+
+function buildRowElement(row) {
+  const tr = document.createElement('tr');
+  tr.dataset.rowId = String(row.id);
+
+  tr.innerHTML = `
+    <td>${escapeHtml(row.name)}</td>
+    <td>${escapeHtml(row.version || '-')}</td>
+    <td class="purl-cell"><code>${escapeHtml(row.purl || '-')}</code></td>
+    <td>${escapeHtml(row.purlParsed?.type || row.type || '-')}</td>
+    <td>${buildResultCellHtml(row)}</td>
+    <td>
+      <input type="text" class="override-input" list="product-list" placeholder="override product..." value="${escapeHtml(row.overrideSlug || row.eol?.slug || '')}" />
+    </td>
+  `;
+
+  const overrideInput = tr.querySelector('.override-input');
+  overrideInput.addEventListener('change', () => {
+    const value = overrideInput.value.trim();
+    row.overrideSlug = value || undefined;
+    lookupRow(row);
+  });
+
+  const errorMark = tr.querySelector('.mark-error');
+  if (errorMark) {
+    errorMark.addEventListener('click', () => openErrorModal(row));
+  }
+
+  return tr;
+}
+
+/** Builds the "End-of-life result" cell: a checkmark + dates, or a clickable red X. */
+function buildResultCellHtml(row) {
+  const eol = row.eol;
+
+  if (!eol || eol.status === 'pending') {
+    return `<span class="result-cell"><span class="mark mark-pending">&hellip;</span> <span class="result-text">Not checked yet</span></span>`;
+  }
+
+  if (eol.ok) {
+    const productLink = eol.slug
+      ? `<a class="eol-link" href="https://endoflife.date/${encodeURIComponent(eol.slug)}" target="_blank" rel="noopener">${escapeHtml(eol.slug)}</a>`
+      : '';
+    return `
+      <span class="result-cell">
+        <span class="mark mark-ok" title="endoflife.date returned data for this package">&#10003;</span>
+        <span class="result-text">${escapeHtml(eol.label)}</span>
+        ${productLink}
+      </span>
+    `;
+  }
+
+  return `
+    <span class="result-cell">
+      <button type="button" class="mark mark-error" title="Click to see the error details">&#10007;</button>
+      <span class="result-text result-text-error">${escapeHtml(eol.label || 'Lookup failed')}</span>
+    </span>
+  `;
+}
+
+function openErrorModal(row) {
+  const eol = row.eol;
+  const err = eol?.error;
+
+  errorModalBody.innerHTML = `
+    <dl>
+      <dt>Package</dt><dd>${escapeHtml(row.name)} ${escapeHtml(row.version || '')}</dd>
+      <dt>PURL</dt><dd><code>${escapeHtml(row.purl || '-')}</code></dd>
+      <dt>Matched product</dt><dd>${escapeHtml(eol?.slug || '(none)')}</dd>
+      <dt>Request URL</dt><dd>${err?.url ? `<code>${escapeHtml(err.url)}</code>` : '-'}</dd>
+      <dt>HTTP status</dt><dd>${err?.httpStatus ?? '-'}</dd>
+    </dl>
+    <p>${escapeHtml(err?.message || 'Unknown error')}</p>
+    ${err?.body ? `<pre class="modal-raw">${escapeHtml(truncate(err.body, 2000))}</pre>` : ''}
+  `;
+  errorModal.hidden = false;
+  errorModalClose.focus();
+}
+
+function closeErrorModal() {
+  errorModal.hidden = true;
+}
+
+function truncate(str, maxLength) {
+  return str.length > maxLength ? `${str.slice(0, maxLength)}...` : str;
+}
+
+function updateSummary() {
+  const counts = { ok: 0, eol: 0, 'eol-scheduled': 0, supported: 0, failed: 0, pending: 0 };
+  for (const row of rows) {
+    const eol = row.eol;
+    if (!eol || eol.status === 'pending') {
+      counts.pending += 1;
+    } else if (eol.ok) {
+      counts.ok += 1;
+      counts[eol.status] = (counts[eol.status] || 0) + 1;
+    } else {
+      counts.failed += 1;
+    }
+  }
+  summaryEl.innerHTML = `
+    <span class="summary-item summary-ok">&#10003; ${counts.ok} resolved (${counts.supported} supported, ${counts['eol-scheduled']} sunset scheduled, ${counts.eol} end of life)</span>
+    <span class="summary-item summary-error">&#10007; ${counts.failed} failed</span>
+    <span class="summary-item">${counts.pending} pending</span>
+  `;
+}
+
+function setStatus(message, isError = false) {
+  statusEl.textContent = message;
+  statusEl.classList.toggle('status-error', isError);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+// ---- end js/app.js ----
+</script>
+</body>
+</html>
