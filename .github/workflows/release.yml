@@ -4,12 +4,17 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
+# Least privilege by default; only the release job needs to write (create a Release).
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-release:
+  # Runs on every pull request AND every push to main, so tests gate PRs before merge.
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,6 +40,23 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 30
+
+  # Builds the standalone HTML and publishes a Release. Only on push to main (not PRs),
+  # and only once the test job has passed.
+  release:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Build standalone HTML
         run: npm run build
