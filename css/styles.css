@@ -162,9 +162,47 @@ thead th {
   top: 0;
 }
 
-.purl-cell code {
+.id-cell code {
   font-size: 0.8rem;
   word-break: break-all;
+}
+
+.id-badge {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
+.id-badge-purl {
+  color: #1e40af;
+  background: #dbeafe;
+}
+
+.id-badge-cpe {
+  color: #6b21a8;
+  background: #f3e8ff;
+}
+
+.id-badge-none {
+  color: var(--unknown);
+  background: var(--unknown-bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  .id-badge-purl {
+    color: #bfdbfe;
+    background: #1e3a5f;
+  }
+
+  .id-badge-cpe {
+    color: #e9d5ff;
+    background: #4a1d6e;
+  }
 }
 
 .summary-item {

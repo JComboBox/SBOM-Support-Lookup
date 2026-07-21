@@ -10,7 +10,7 @@
   <header>
     <h1>SBOM Support Lookup</h1>
     <p class="subtitle">
-      Upload an SBOM, list every package's PURL, and check end-of-life status against
+      Upload an SBOM, list every package's identifier (PURL or CPE), and check end-of-life status against
       <a href="https://endoflife.date" target="_blank" rel="noopener">endoflife.date</a>.
       Everything runs in your browser - the SBOM file never leaves your machine.
     </p>
@@ -29,7 +29,7 @@
     <section id="table-section" hidden>
       <div class="toolbar">
         <button id="lookup-btn" type="button" disabled>Load End of Life Dates</button>
-        <input type="text" id="filter-input" placeholder="Filter by name, version, purl, or product..." />
+        <input type="text" id="filter-input" placeholder="Filter by name, version, purl, cpe, or product..." />
       </div>
       <div id="summary" class="summary"></div>
       <div class="table-wrap">
@@ -38,7 +38,7 @@
             <tr>
               <th>Name</th>
               <th>Version</th>
-              <th>PURL</th>
+              <th>Identifier</th>
               <th>Type</th>
               <th>End-of-life result</th>
               <th>Product match (editable)</th>

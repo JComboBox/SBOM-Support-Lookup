@@ -13,7 +13,13 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
-const JS_FILES_IN_DEPENDENCY_ORDER = ['js/purl.js', 'js/sbom-parser.js', 'js/eol-client.js', 'js/app.js'];
+const JS_FILES_IN_DEPENDENCY_ORDER = [
+  'js/purl.js',
+  'js/cpe.js',
+  'js/sbom-parser.js',
+  'js/eol-client.js',
+  'js/app.js'
+];
 
 /** Removes `import ... from '...';` lines and `export` keywords so the files
  * can be concatenated into one classic (non-module) script. */

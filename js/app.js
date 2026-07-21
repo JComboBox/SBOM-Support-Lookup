@@ -1,5 +1,4 @@
 import { extractComponents } from './sbom-parser.js';
-import { parsePurl } from './purl.js';
 import { getAllProducts, lookupComponentEol } from './eol-client.js';
 
 const uploadBtn = document.getElementById('upload-btn');
@@ -62,13 +61,16 @@ async function handleFile(file) {
     rows = components.map((c, index) => ({
       ...c,
       id: index,
-      purlParsed: c.purl ? parsePurl(c.purl) : null,
       eol: null,
       lookupSeq: 0
     }));
 
+    const purlCount = rows.filter((r) => r.identifierType === 'purl').length;
+    const cpeCount = rows.filter((r) => r.identifierType === 'cpe').length;
+    const noneCount = rows.length - purlCount - cpeCount;
     setStatus(
-      `Loaded ${rows.length} package${rows.length === 1 ? '' : 's'} from ${file.name}. ` +
+      `Loaded ${rows.length} package${rows.length === 1 ? '' : 's'} from ${file.name} ` +
+        `(${purlCount} via purl, ${cpeCount} via cpe, ${noneCount} with no identifier). ` +
         'In memory only - nothing is uploaded anywhere.'
     );
     tableSection.hidden = rows.length === 0;
@@ -130,7 +132,7 @@ async function lookupRow(row) {
   let result;
   try {
     result = await lookupComponentEol(
-      { name: row.name, version: row.version, type: row.purlParsed?.type || row.type },
+      { name: row.name, version: row.version, type: row.type, cpe: row.cpe },
       row.overrideSlug
     );
   } catch (err) {
@@ -165,6 +167,7 @@ function rowMatchesFilter(row, filter) {
     row.name.toLowerCase().includes(filter) ||
     row.version.toLowerCase().includes(filter) ||
     row.purl.toLowerCase().includes(filter) ||
+    row.cpe.toLowerCase().includes(filter) ||
     (row.eol?.slug || '').toLowerCase().includes(filter)
   );
 }
@@ -192,8 +195,8 @@ function buildRowElement(row) {
   tr.innerHTML = `
     <td>${escapeHtml(row.name)}</td>
     <td>${escapeHtml(row.version || '-')}</td>
-    <td class="purl-cell"><code>${escapeHtml(row.purl || '-')}</code></td>
-    <td>${escapeHtml(row.purlParsed?.type || row.type || '-')}</td>
+    <td class="id-cell">${buildIdentifierCellHtml(row)}</td>
+    <td>${escapeHtml(row.type || '-')}</td>
     <td>${buildResultCellHtml(row)}</td>
     <td>
       <input type="text" class="override-input" list="product-list" placeholder="override product..." value="${escapeHtml(row.overrideSlug || row.eol?.slug || '')}" />
@@ -213,6 +216,23 @@ function buildRowElement(row) {
   }
 
   return tr;
+}
+
+/** Human-readable label for a row's identifier type, shown as a badge in the UI. */
+function identifierTypeLabel(identifierType) {
+  if (identifierType === 'purl') return 'PURL';
+  if (identifierType === 'cpe') return 'CPE';
+  return 'none';
+}
+
+/**
+ * Builds the "Identifier" cell: a badge saying whether a PURL or CPE was found for
+ * this component, plus the identifier string itself.
+ */
+function buildIdentifierCellHtml(row) {
+  const value = row.identifierType === 'cpe' ? row.cpe : row.purl;
+  const badge = `<span class="id-badge id-badge-${row.identifierType}" title="Identified by ${identifierTypeLabel(row.identifierType)}">${identifierTypeLabel(row.identifierType)}</span>`;
+  return `${badge}<code>${escapeHtml(value || '-')}</code>`;
 }
 
 /** Builds the "End-of-life result" cell: a checkmark + dates, or a clickable red X. */
@@ -248,10 +268,11 @@ function openErrorModal(row) {
   const eol = row.eol;
   const err = eol?.error;
 
+  const identifierValue = row.identifierType === 'cpe' ? row.cpe : row.purl;
   errorModalBody.innerHTML = `
     <dl>
       <dt>Package</dt><dd>${escapeHtml(row.name)} ${escapeHtml(row.version || '')}</dd>
-      <dt>PURL</dt><dd><code>${escapeHtml(row.purl || '-')}</code></dd>
+      <dt>Identifier</dt><dd>${escapeHtml(identifierTypeLabel(row.identifierType))}: <code>${escapeHtml(identifierValue || '-')}</code></dd>
       <dt>Matched product</dt><dd>${escapeHtml(eol?.slug || '(none)')}</dd>
       <dt>Request URL</dt><dd>${err?.url ? `<code>${escapeHtml(err.url)}</code>` : '-'}</dd>
       <dt>HTTP status</dt><dd>${err?.httpStatus ?? '-'}</dd>
