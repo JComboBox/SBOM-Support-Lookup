@@ -131,3 +131,37 @@ test('lookupComponentEol: a manual product override skips auto-matching', async 
   assert.equal(result.slug, 'nodejs');
   assert.equal(result.status, 'supported');
 });
+
+test('lookupComponentEol: matches a cpe-only component via its cpe product field', async (t) => {
+  withStubbedFetch(t, {
+    // The display name "OpenSSL FIPS Module" would not match, but the cpe product does.
+    [`${EOL_API_BASE}/all.json`]: { json: ['openssl'] },
+    [`${EOL_API_BASE}/openssl.json`]: { json: [{ cycle: '1.1.1', eol: '2023-09-11' }] }
+  });
+
+  const result = await lookupComponentEol({
+    name: 'OpenSSL FIPS Module',
+    version: '1.1.1',
+    cpe: 'cpe:2.3:a:openssl:openssl:1.1.1:*:*:*:*:*:*:*'
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.slug, 'openssl');
+  assert.equal(result.eolDate, '2023-09-11');
+});
+
+test('lookupComponentEol: matches a cpe-only component via its cpe vendor field', async (t) => {
+  withStubbedFetch(t, {
+    // product "http_server" isn't a slug, but the vendor "apache" is.
+    [`${EOL_API_BASE}/all.json`]: { json: ['apache'] },
+    [`${EOL_API_BASE}/apache.json`]: { json: [{ cycle: '2.4', eol: false }] }
+  });
+
+  const result = await lookupComponentEol({
+    name: 'Apache HTTP Server',
+    version: '2.4.1',
+    cpe: 'cpe:/a:apache:http_server:2.4.1'
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.slug, 'apache');
+  assert.equal(result.status, 'supported');
+});

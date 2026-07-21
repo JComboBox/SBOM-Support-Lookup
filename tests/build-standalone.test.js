@@ -25,7 +25,7 @@ test('build-standalone produces a single HTML file with no leftover module synta
   assert.doesNotMatch(html, /^\s*export /m);
 
   // A sample of functions from each source file should have made it into the bundle.
-  for (const fn of ['parsePurl', 'extractComponents', 'lookupComponentEol', 'function handleFile']) {
+  for (const fn of ['parsePurl', 'parseCpe', 'extractComponents', 'lookupComponentEol', 'function handleFile']) {
     assert.ok(html.includes(fn), `expected bundled script to contain "${fn}"`);
   }
 });

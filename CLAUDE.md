@@ -27,11 +27,17 @@ file (`dist/sbom-support-lookup.html`) that runs with nothing but a double-click
   `genhtml`-generated HTML report) as a workflow artifact, runs `npm run build`, and publishes a GitHub Release
   (tag `build-<run number>`) with `dist/sbom-support-lookup.html` attached via `softprops/action-gh-release`.
 - `js/purl.js` - pure function `parsePurl(purl)`, no dependencies, no DOM/browser APIs.
+- `js/cpe.js` - pure function `parseCpe(cpe)` (CPE 2.3 formatted strings + CPE 2.2 URIs) plus `CPE_PART_NAMES`.
+  No dependencies, no DOM/browser APIs.
 - `js/sbom-parser.js` - pure function `extractComponents(sbomJson)`, detects CycloneDX vs SPDX and flattens to
-  `{ name, version, purl, type, group }[]`. No DOM/browser APIs.
+  `{ name, version, purl, cpe, identifierType, type, group }[]`. A component may carry a purl, a cpe, or both;
+  `identifierType` is `'purl'`/`'cpe'`/`'none'` (purl wins when both are present). `type`/`group`/`version` are
+  filled in from whichever identifier is present when the SBOM didn't supply them. No DOM/browser APIs.
 - `js/eol-client.js` - talks to `https://endoflife.date/api/*` via `fetch`. Exports both the network-calling
   functions (`getAllProducts`, `getCycles`, `lookupComponentEol`) and pure helpers (`normalize`,
   `versionMajorMinor`, `matchCycle`, `interpretEol`) that are unit tested without any network access.
+  endoflife.date is queried by product slug regardless of purl vs cpe; `findProductSlug` just derives its
+  candidate slugs differently (purl name/type, or cpe product/vendor).
   `lookupComponentEol` never rejects - it always resolves to `{ ok, slug, cycle, status, label, eolDate, error }`.
   `error` is only non-null when `ok` is false, and captures enough (`message`, `url`, `httpStatus`, `body`) to
   show the user the real API response, not just a generic failure message.
@@ -40,9 +46,10 @@ file (`dist/sbom-support-lookup.html`) that runs with nothing but a double-click
   results render as a green checkmark with the EOL label/date; `ok: false` results render as a clickable red X
   that opens the `#error-modal` dialog with `row.eol.error`.
 
-Keep this separation: parsing/matching logic (`purl.js`, `sbom-parser.js`, the pure exports of
+Keep this separation: parsing/matching logic (`purl.js`, `cpe.js`, `sbom-parser.js`, the pure exports of
 `eol-client.js`) must stay framework-free and testable with `node:test`; `app.js` stays the only DOM-touching
-file.
+file. The `scripts/build-standalone.js` dependency order matters: `purl.js` and `cpe.js` must come before
+`sbom-parser.js` and `eol-client.js` (which import them).
 
 ## Running it
 
@@ -77,10 +84,11 @@ is plain string concatenation, not an exception to this - don't grow it into a r
 
 - Vanilla JS, ES modules, no TypeScript, no dependencies (`npm start` shells out to `npx serve` purely as a
   dev convenience and installs nothing into the repo).
-- Keep functions in `purl.js`, `sbom-parser.js`, and the pure helpers in `eol-client.js` free of `fetch`/DOM so
-  they stay unit-testable via `node --test`.
-- When adding a new SBOM format or matching rule, add a corresponding test under `tests/` and, if it's a new
-  SBOM format, a sample file under `samples/`.
+- Keep functions in `purl.js`, `cpe.js`, `sbom-parser.js`, and the pure helpers in `eol-client.js` free of
+  `fetch`/DOM so they stay unit-testable via `node --test`.
+- When adding a new SBOM format, identifier type, or matching rule, add a corresponding test under `tests/`
+  and, if it's a new SBOM format or identifier scheme, a sample file under `samples/`
+  (`samples/sample-cpe-cyclonedx.json` is the cpe-based fixture).
 - `js/app.js` updates a row's result cell in place (`updateResultCell`) rather than replacing the whole `<tr>`.
   Don't reintroduce whole-row replacement on lookup - the row's "Product match" `<input>` must stay mounted
   (and keep focus) across a lookup it itself triggered, or you'll reintroduce a DOM race between the input's

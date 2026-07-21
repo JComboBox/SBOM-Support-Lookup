@@ -2,6 +2,13 @@
 // Note: this project (and endoflife.date itself) used to live at endoflife.me;
 // that domain now redirects to endoflife.date, which is the host used below.
 // Runs entirely in the browser - no server/API key required.
+//
+// endoflife.date is queried the same way (by product slug) regardless of whether
+// a component was identified by a purl or a cpe; the difference is only in how the
+// candidate product names are derived. For a purl the package name/type is used;
+// for a cpe the product and vendor fields are used (see findProductSlug).
+
+import { parseCpe } from './cpe.js';
 
 export const EOL_API_BASE = 'https://endoflife.date/api';
 
@@ -85,7 +92,10 @@ export function normalize(name) {
 
 /**
  * Attempts to match a parsed component to an endoflife.date product slug.
- * @param {{name: string, type?: string}} component
+ * Builds candidate slugs from the component name/type and, when a cpe is present,
+ * from the cpe's product and vendor fields too - so a component identified only by
+ * cpe (e.g. `cpe:2.3:a:apache:log4j:...`) can still be matched.
+ * @param {{name: string, type?: string, cpe?: string}} component
  * @returns {Promise<string|null>}
  */
 export async function findProductSlug(component) {
@@ -93,15 +103,26 @@ export async function findProductSlug(component) {
   const productSet = new Set(products);
 
   const candidates = [];
-  const normName = normalize(component.name);
-  candidates.push(normName);
-  if (PRODUCT_ALIASES[normName]) candidates.push(PRODUCT_ALIASES[normName]);
+  const addCandidate = (raw) => {
+    const norm = normalize(raw);
+    if (!norm) return;
+    candidates.push(norm);
+    if (PRODUCT_ALIASES[norm]) candidates.push(PRODUCT_ALIASES[norm]);
+  };
 
-  const normType = normalize(component.type || '');
-  if (PRODUCT_ALIASES[normType]) candidates.push(PRODUCT_ALIASES[normType]);
+  addCandidate(component.name);
+  addCandidate(component.type);
+
+  if (component.cpe) {
+    const cpe = parseCpe(component.cpe);
+    if (cpe) {
+      addCandidate(cpe.product);
+      addCandidate(cpe.vendor);
+    }
+  }
 
   for (const candidate of candidates) {
-    if (candidate && productSet.has(candidate)) return candidate;
+    if (productSet.has(candidate)) return candidate;
   }
   return null;
 }
@@ -199,7 +220,7 @@ function buildErrorResult(err, { slug = null, fallbackUrl = null } = {}) {
  * why (a real HTTP/network failure, or a local "no match" condition) so the
  * UI can show the raw detail on demand.
  *
- * @param {{name: string, version: string, type?: string}} component
+ * @param {{name: string, version: string, type?: string, cpe?: string}} component
  * @param {string} [overrideSlug] force a specific product slug instead of auto-matching
  */
 export async function lookupComponentEol(component, overrideSlug) {

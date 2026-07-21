@@ -3,10 +3,12 @@
 A single-page, dependency-free web app that:
 
 1. Loads a CycloneDX or SPDX SBOM (JSON) file into browser memory via an **Upload SBOM** button (or drag & drop) - nothing is uploaded to a server.
-2. Lists every package in the SBOM along with its [Package URL (purl)](https://github.com/package-url/purl-spec).
-3. On clicking **Load End of Life Dates**, looks up each purl against the [endoflife.date](https://endoflife.date) API (the current home of the project formerly at endoflife.me):
+2. Lists every package in the SBOM along with its identifier - a [Package URL (purl)](https://github.com/package-url/purl-spec) or a [Common Platform Enumeration (cpe)](https://csrc.nist.gov/projects/security-content-automation-protocol/specifications/cpe) name. Each row shows a **PURL** or **CPE** badge indicating which one was found and used.
+3. On clicking **Load End of Life Dates**, looks each component up against the [endoflife.date](https://endoflife.date) API (the current home of the project formerly at endoflife.me):
    - A package that got a usable response is marked with a green **✓** and shows its EOL/support dates next to it.
    - A package whose lookup failed is marked with a red **✗**. Clicking the ✗ opens a dialog with the actual error response (URL, HTTP status, body).
+
+SBOMs in the wild identify components inconsistently - some use purls, some use cpes, some use both. The app detects which identifier each component carries and derives the endoflife.date product to look up accordingly (from the purl's name/type, or from the cpe's product/vendor fields).
 
 It's plain HTML/CSS/JavaScript, no framework, no dependencies to install, so it's easy to clone, open, and
 share. There are two ways to run it, depending on whether you want to develop it or just hand it to someone.
@@ -109,14 +111,28 @@ merge):
   [purl spec](https://github.com/package-url/purl-spec) into `{ type, namespace, name, version, qualifiers, subpath }`.
   Returns `null` for anything that isn't a valid purl. Pure function, no dependencies.
 
+### `js/cpe.js`
+
+- **`parseCpe(cpe)`** - Parses a CPE name into `{ cpeVersion, part, vendor, product, version, update, edition,
+  language }`. Handles both the CPE 2.3 formatted-string binding (`cpe:2.3:a:vendor:product:version:...`) and
+  the CPE 2.2 URI binding (`cpe:/a:vendor:product:version`), unbinding logical `*`/`-` values to empty strings
+  and unescaping/percent-decoding values. Returns `null` for non-CPE input. Pure function, no dependencies.
+- **`CPE_PART_NAMES`** - Small map from the CPE part letter (`a`/`o`/`h`) to a readable name
+  (`application`/`operating-system`/`hardware`), used to fill in a component's type when it only has a cpe.
+
 ### `js/sbom-parser.js`
 
 - **`extractComponents(sbomJson)`** - Entry point. Detects whether the parsed JSON is CycloneDX or SPDX and
   delegates to the matching extractor below; throws if neither format is recognized.
+- **`makeComponent(raw)`** *(internal)* - Normalizes a raw component into the shared shape
+  `{ name, version, purl, cpe, identifierType, type, group }`. Detects whether a purl or cpe is present
+  (`identifierType` is `'purl'`, `'cpe'`, or `'none'`; purl wins when both are present since it names the
+  ecosystem precisely) and fills in `type`/`group`/`version` from that identifier when the SBOM didn't supply
+  them directly.
 - **`extractCycloneDX(bom)`** *(internal)* - Walks `bom.components[]` recursively (including nested
-  `components[]`) and flattens each into `{ name, version, purl, type, group }`.
+  `components[]`), reading each component's `purl` and/or `cpe`.
 - **`extractSPDX(doc)`** *(internal)* - Reads `doc.packages[]`, pulling the purl out of each package's
-  `externalRefs[]` entry where `referenceType === "purl"`.
+  `externalRefs[]` entry where `referenceType === "purl"`, and the cpe from a `cpe23Type` or `cpe22Type` entry.
 
 ### `js/eol-client.js`
 
@@ -134,9 +150,12 @@ browser - no API key required.
 - **`normalize(name)`** - Lowercases a package name, strips an npm scope (`@angular/core` -> `core`), and
   collapses everything else to hyphens, producing a candidate product slug.
 - **`findProductSlug(component)`** - Tries to match a parsed SBOM component to a real endoflife.date product
-  slug: normalizes the name, checks the small `PRODUCT_ALIASES` table (e.g. `node` -> `nodejs`,
-  `golang` -> `go`) for both the name and the purl type, and returns the first candidate that's actually in the
-  product list, or `null` if nothing matches.
+  slug. Builds candidate slugs by normalizing the component name and type and, when a cpe is present, the cpe's
+  product and vendor fields too (so a component identified only by cpe - e.g.
+  `cpe:2.3:a:apache:log4j:...` - still matches); checks the small `PRODUCT_ALIASES` table (e.g. `node` ->
+  `nodejs`, `golang` -> `go`) for each; and returns the first candidate that's actually in the product list, or
+  `null` if nothing matches. endoflife.date is queried by product slug the same way regardless of whether the
+  component came from a purl or a cpe - only how the candidate slugs are derived differs.
 - **`versionMajorMinor(version)`** - Extracts `"major"` or `"major.minor"` from a free-form version string
   (`"3.11.4"` -> `"3.11"`, `"v18.16.0"` -> `"18.16"`).
 - **`matchCycle(cycles, version)`** - Given a product's release cycles, finds the best match for a package
@@ -163,8 +182,9 @@ browser - no API key required.
 The only file that touches the DOM; wires the two files above to the page.
 
 - **`handleFile(file)`** - Reads the uploaded/dropped file, parses it as JSON, runs it through
-  `extractComponents`, and renders the initial package table. Called from both the **Upload SBOM** button flow
-  and drag-and-drop.
+  `extractComponents`, and renders the initial package table. The status line it sets reports how many
+  components were identified via purl, via cpe, and with no identifier. Called from both the **Upload SBOM**
+  button flow and drag-and-drop.
 - **`preloadProductList()`** - Populates the `<datalist>` behind each row's "Product match" input with every
   known endoflife.date product slug, so overrides autocomplete.
 - **`runLookups()`** - Triggered by **Load End of Life Dates**. Runs `lookupRow` for every package with a small
@@ -175,15 +195,19 @@ The only file that touches the DOM; wires the two files above to the page.
   result is discarded instead of overwriting the newer one.
 - **`renderTable()`** - Rebuilds the visible rows from the in-memory `rows` array, applying the current filter
   text.
-- **`rowMatchesFilter(row, filter)`** - Predicate used by the filter box: matches on name, version, purl, or
-  matched product slug.
+- **`rowMatchesFilter(row, filter)`** - Predicate used by the filter box: matches on name, version, purl, cpe,
+  or matched product slug.
 - **`buildRowElement(row)`** / **`updateResultCell(row)`** - `buildRowElement` creates a full `<tr>` (used when
   the table is (re)built); `updateResultCell` updates *only* the "End-of-life result" `<td>` in place when a
   lookup completes, so the row's "Product match" `<input>` is never destroyed or loses focus mid-interaction.
+- **`buildIdentifierCellHtml(row)` / `identifierTypeLabel(identifierType)`** - Render the "Identifier" cell: a
+  **PURL** or **CPE** badge (or **none**) plus the identifier string, so it's clear at a glance which identifier
+  the row was matched from.
 - **`buildResultCellHtml(row)`** - Renders the result cell: a green ✓ with the EOL label/date and a link to the
   product's endoflife.date page on success, or a clickable red ✗ button on failure.
 - **`openErrorModal(row)` / `closeErrorModal()`** - Show/hide the error-detail dialog, populated with the
-  package, purl, matched product (if any), request URL, HTTP status, and message/body from `row.eol.error`.
+  package, identifier (type + value), matched product (if any), request URL, HTTP status, and message/body from
+  `row.eol.error`.
 - **`updateSummary()`** - Renders the counts bar above the table (resolved/supported/scheduled/EOL, failed,
   pending).
 - **`setStatus(message, isError)`** - Updates the status line under the upload zone.
@@ -205,12 +229,13 @@ The only file that touches the DOM; wires the two files above to the page.
 index.html                        entry point (multi-file, dev version)
 css/styles.css                     styling
 js/purl.js                         purl parser
-js/sbom-parser.js                  CycloneDX / SPDX -> flat component list
+js/cpe.js                          cpe (Common Platform Enumeration) parser
+js/sbom-parser.js                  CycloneDX / SPDX -> flat component list (purl + cpe)
 js/eol-client.js                   endoflife.date API client + matching logic
 js/app.js                          UI wiring
 scripts/build-standalone.js        inlines the above into dist/sbom-support-lookup.html
 dist/sbom-support-lookup.html      generated, single-file, no-server-required app
-samples/                            example CycloneDX / SPDX SBOMs
+samples/                            example CycloneDX / SPDX SBOMs (purl- and cpe-based)
 tests/                              node:test regression tests for the pure logic modules
 ```
 
